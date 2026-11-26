@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Runner 3D</title>
+<style>
+:root{--bg:#0a0a1f;--fg:#eef;--accent:#19e6c1;--warn:#ff5a4d;--gold:#ffd23f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a1f;--fg:#eef}}
+:root[data-theme="dark"]{--bg:#0a0a1f}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:"Trebuchet MS",Verdana,sans-serif;overflow:hidden;touch-action:none}
+canvas{display:block;position:fixed;inset:0}
+#hud{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);display:flex;justify-content:space-between;padding:12px 16px;font-size:18px;font-weight:700;pointer-events:none;text-shadow:0 2px 6px #000}
+#toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--gold);color:#222;padding:8px 16px;border-radius:20px;font-weight:700;opacity:0;transition:opacity .3s}
+#ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,5,20,.82);text-align:center;padding:24px;gap:12px}
+#ov h1{font-size:clamp(32px,8vw,56px);margin:0;color:var(--accent);letter-spacing:2px}
+#ov p{max-width:440px;margin:0;line-height:1.5}
+button{font:inherit;font-weight:700;font-size:20px;padding:12px 32px;border:0;border-radius:28px;background:var(--accent);color:#052;cursor:pointer}
+button:focus-visible{outline:3px solid #fff}
+#pad{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:0;right:0;display:flex;justify-content:space-between;padding:0 16px}
+#pad button{width:30vw;max-width:140px;opacity:.55;font-size:28px}
+</style>
+</head>
+<body>
+<div id="hud"><span id="sc">Ұпай: 0</span><span id="lv">Деңгей: 1/3</span><span id="tm">Уақыт: 0</span><span id="li">♥♥♥</span></div>
+<div id="toast"></div>
+<div id="pad"><button id="bl" aria-label="Солға">◀</button><button id="br" aria-label="Оңға">▶</button></div>
+<div id="ov"><h1>NEON RUNNER</h1>
+<p id="msg">Мақсат: 60 секунд аман өтіп, мүмкіндігінше көп жұлдыз жинау. Қызыл кедергілерден қашыңыз!<br>Басқару: ← → немесе A / D, телефонда батырмалар.</p>
+<button id="go">Ойынды бастау</button></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const L=[-2,0,2];let lane=1,run=false,score=0,lives=3,t=0,level=1,stars=0,spawn=0,shake=0,badges=[];
+const $=id=>document.getElementById(id);
+const R=new THREE.WebGLRenderer({antialias:true});document.body.prepend(R.domElement);
+const S=new THREE.Scene();S.background=new THREE.Color(0x0a0a1f);S.fog=new THREE.Fog(0x0a0a1f,20,70);
+const C=new THREE.PerspectiveCamera(65,1,.1,100);C.position.set(0,3.2,6);C.lookAt(0,0,-6);
+S.add(new THREE.AmbientLight(0x8888ff,.6));const dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(3,8,5);S.add(dl);
+const road=new THREE.Mesh(new THREE.PlaneGeometry(7,200),new THREE.MeshStandardMaterial({color:0x14143a}));road.rotation.x=-Math.PI/2;road.position.z=-80;S.add(road);
+const P=new THREE.Mesh(new THREE.BoxGeometry(1,.8,1.4),new THREE.MeshStandardMaterial({color:0x19e6c1,emissive:0x0a7d69}));P.position.set(0,.4,0);S.add(P);
+const lines=[];for(let i=0;i<14;i++)for(const x of[-1,1]){const m=new THREE.Mesh(new THREE.BoxGeometry(.1,.02,3),new THREE.MeshBasicMaterial({color:0x6a6aff}));m.position.set(x,.02,-i*6);S.add(m);lines.push(m)}
+let objs=[];
+function resize(){R.setSize(innerWidth,innerHeight);C.aspect=innerWidth/innerHeight;C.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+let AC;function beep(f,d,ty){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=ty||'sine';o.frequency.value=f;g.gain.value=.12;g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(e){}}
+function toast(s){const e=$('toast');e.textContent='🏅 '+s;e.style.opacity=1;setTimeout(()=>e.style.opacity=0,2200)}
+function badge(n){if(!badges.includes(n)){badges.push(n);toast('Жетістік: '+n);beep(880,.3,'triangle')}}
+function move(d){lane=Math.max(0,Math.min(2,lane+d))}
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='a')move(-1);if(e.key==='ArrowRight'||e.key==='d')move(1)});
+$('bl').onclick=()=>move(-1);$('br').onclick=()=>move(1);
+let sx=null;addEventListener('touchstart',e=>sx=e.touches[0].clientX);addEventListener('touchend',e=>{if(sx!==null){const d=e.changedTouches[0].clientX-sx;if(Math.abs(d)>40)move(d>0?1:-1)}sx=null});
+function add(type,l){const m=type==='s'?new THREE.Mesh(new THREE.OctahedronGeometry(.5),new THREE.MeshStandardMaterial({color:0xffd23f,emissive:0x886600})):new THREE.Mesh(new THREE.BoxGeometry(1.4,1.4,1.4),new THREE.MeshStandardMaterial({color:0xff5a4d,emissive:0x661510}));m.position.set(L[l],type==='s'?.8:.7,-60);m.userData={type,l};S.add(m);objs.push(m)}
+function start(){objs.forEach(o=>S.remove(o));objs=[];lane=1;score=0;lives=3;t=0;level=1;stars=0;spawn=0;badges=[];run=true;$('ov').style.display='none';beep(520,.2)}
+function end(win){run=false;beep(win?980:140,.6,win?'triangle':'sawtooth');
+$('ov').style.display='flex';$('ov').querySelector('h1').textContent=win?'ЖЕҢІС! 🏆':'ОЙЫН АЯҚТАЛДЫ';
+$('msg').innerHTML='Ұпай: <b>'+score+'</b> · Жұлдыздар: <b>'+stars+'</b><br>Жетістіктер: '+(badges.length?badges.join(', '):'жоқ');$('go').textContent='Қайта ойнау'}
+$('go').onclick=start;
+const clock=new THREE.Clock();
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);
+if(run){t+=dt;level=t<20?1:t<40?2:3;if(level===3)badge('Жылдамдық шебері');
+const sp=14+(level-1)*6;spawn-=dt;
+if(spawn<=0){spawn=.95-(level-1)*.18;const l=Math.floor(Math.random()*3);add(Math.random()<.4?'s':'o',l);if(level>1&&Math.random()<.5)add('o',(l+1+Math.floor(Math.random()*2))%3)}
+for(const o of objs){o.position.z+=sp*dt;o.rotation.y+=dt*2;
+if(!o.userData.d&&o.position.z>-.9&&o.position.z<.9&&o.userData.l===lane){o.userData.d=1;S.remove(o);
+if(o.userData.type==='s'){stars++;score+=10;beep(1000,.12,'triangle');if(stars===1)badge('Бірінші жұлдыз');if(stars===5)badge('5 жұлдыз жинады')}
+else{lives--;shake=.4;beep(120,.3,'sawtooth');if(lives<=0)end(false)}}}
+objs=objs.filter(o=>!o.userData.d&&o.position.z<6||(o.userData.d?false:false)||(!o.userData.d&&o.position.z<6));
+objs.forEach(o=>{if(o.position.z>=6)S.remove(o)});
+lines.forEach(m=>{m.position.z+=sp*dt;if(m.position.z>4)m.position.z-=84});
+if(t>=60&&run)end(true);
+$('sc').textContent='Ұпай: '+score;$('lv').textContent='Деңгей: '+level+'/3';$('tm').textContent='Уақыт: '+Math.floor(t);$('li').textContent='♥'.repeat(Math.max(lives,0))}
+P.position.x+=(L[lane]-P.position.x)*Math.min(1,dt*12);P.rotation.z=(P.position.x-L[lane])*.3;
+shake=Math.max(0,shake-dt);C.position.x=(Math.random()-.5)*shake;
+R.render(S,C)}
+loop();
+</script>
+</body>
+</html>
